@@ -254,7 +254,7 @@ class LockfileParser:
             for line in section.strip().splitlines():
                 line = line.strip()
                 if not line or line.startswith("#") or line.startswith("["):
-                    break
+                    continue
 
                 name_match = re.match(r'^([a-zA-Z0-9_-]+)\s*=\s*', line)
                 if not name_match:
