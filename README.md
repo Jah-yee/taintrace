@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/yunaremaia/taintrace/actions/workflows/ci.yml/badge.svg)](https://github.com/yunaremaia/taintrace/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/yunaremaia/taintrace/blob/main/LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/yunaremaia/taintrace/blob/main/LICENSE) [![Release](https://img.shields.io/github/v/release/yunaremaia/taintrace)](https://github.com/yunaremaia/taintrace/releases/latest) [![Stars](https://img.shields.io/github/stars/yunaremaia/taintrace)](https://github.com/yunaremaia/taintrace)
 
 **Typosquat detector for AI coding agent dependencies.**
 
@@ -243,6 +243,17 @@ repos:
 | Phylum        | ✅        | Partial   | ❌       | ❌          |
 | **taintrace** | ❌        | ✅        | ✅       | ✅          |
 
+If this tool is useful to you, a star helps other people find it.
+
+## Related tools
+
+- **[driftcheck](https://github.com/yunaremaia/driftcheck)** — detect version drift between docs and toolchain files
+- **[depscan](https://github.com/yunaremaia/depscan)** — scan dependencies across multiple ecosystems
+- **[agentcost](https://github.com/yunaremaia/agentcost)** — track and attribute LLM spend per agent
+- **[vibeguard](https://github.com/yunaremaia/vibeguard)** — guardrails for AI-generated code changes
+
+Part of a family of focused, single-purpose developer tools — each one does one thing
+and does it well.
 ## License
 
 MIT — see [LICENSE](LICENSE)
