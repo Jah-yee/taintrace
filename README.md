@@ -1,5 +1,9 @@
 # taintrace
 
+[![CI](https://github.com/yunaremaia/taintrace/actions/workflows/ci.yml/badge.svg)](https://github.com/yunaremaia/taintrace/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/yunaremaia/taintrace/blob/main/LICENSE)
+
 **Typosquat detector for AI coding agent dependencies.**
 
 `taintrace` scans your lockfiles (Cargo.lock, package-lock.json, requirements.txt, go.sum) for package names that suspiciously resemble known legitimate packages — the exact vector used in the [arrayref@0.3.10 attack](https://github.com/rustsec/advisory-db/pull/2045) (August 2026), where `proc-macro1` imitated `proc-macro2` to execute arbitrary code during `cargo build`.
