@@ -120,7 +120,7 @@ def check(ctx: click.Context, lockfiles: tuple[Path, ...], config_file: Optional
 @cli.command()
 @click.argument("name")
 @click.option("--ecosystem", "-e", default="rust",
-              type=click.Choice(["rust", "node", "python", "go", "ruby", "php", "swift", "elixir"]),
+              type=click.Choice(["rust", "node", "python", "go", "ruby", "php", "swift", "elixir", "java"]),
               help="Package ecosystem")
 def score(name: str, ecosystem: str):
     """Score a single package name for typosquat risk."""

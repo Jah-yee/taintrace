@@ -192,6 +192,29 @@ Use `--threshold` with `check` or `scan-directory` to set the minimum similarity
 | Elixir    | mix.lock                               | ✅     |
 | Gradle    | build.gradle, build.gradle.kts, gradle/libs.versions.toml | ✅     |
 
+### Known-package data
+
+Similarity suggestions come from a built-in, offline package database. Each ecosystem is
+backed by real registry data, not hand-written guesses:
+
+| Ecosystem | Source |
+|-----------|--------|
+| Rust, Node.js, Python, Go, Ruby, PHP, Swift, Elixir | curated lists in `taintrace/db.py` |
+| Java / Maven | [`src/taintrace/data/java_packages.txt`](src/taintrace/data/java_packages.txt) — 7,848 `groupId:artifactId` coordinates generated from the [Maven Central repository index](https://repo1.maven.org/maven2/), with provenance recorded in the file header |
+
+Refresh the Java data against Maven Central with:
+
+```bash
+python scripts/generate_java_packages.py           # regenerate
+python scripts/generate_java_packages.py --check   # validate the committed file (offline)
+python scripts/generate_java_packages.py --verify  # re-query Maven Central and diff
+```
+
+Java coordinates are matched in their `groupId:artifactId` form, the same shape the
+Gradle parsers emit; a bare `artifactId` is also accepted. If you request an ecosystem
+that has no data at all, taintrace says so explicitly instead of reporting
+"no similar packages found".
+
 ## CI/CD integration
 
 ### GitHub Action

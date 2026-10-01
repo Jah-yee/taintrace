@@ -42,6 +42,11 @@ Funding = "https://github.com/sponsors/yunaremaia"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+# The java known-package coordinates are shipped as package data: dropping them
+# from the wheel would silently empty the java ecosystem (issue #77).
+[tool.setuptools.package-data]
+taintrace = ["data/*.txt"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]

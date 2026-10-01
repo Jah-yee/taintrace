@@ -48,6 +48,7 @@ The package exports the following public objects from `taintrace.__init__`:
 | `LockfileParser` | Parses supported lockfile formats. |
 | `SimilarityEngine` | Compares package names. |
 | `KnownPackagesDB` | Provides the built-in package database. |
+| `UnknownEcosystemError` | Raised when an ecosystem has no known-package data. |
 | `RiskScorer` | Converts package similarity into a risk result. |
 | `RiskResult` | Dataclass returned by `RiskScorer.score`. |
 | `RiskLevel` | `LOW`, `MEDIUM`, `HIGH`, or `CRITICAL`. |
@@ -213,6 +214,20 @@ Returns a combined similarity score between `0.0` and `1.0`, using edit
 distance, Soundex, substring matching, and a small set of Unicode confusables.
 Identical strings return `1.0`.
 
+The Soundex component is damped when the two names are long enough for the
+four-character code to saturate: Soundex emits a fixed four-character code, so
+long names sharing a prefix collide (`org.*` coordinates all hash to `o621`).
+Without that guard a collision scored `1.0` and unrelated packages were
+reported as perfect typosquats.
+
+#### `could_match(name1: str, name2: str, threshold: float) -> bool`
+
+A cheap necessary condition for `similarity(name1, name2) >= threshold`, used to
+skip candidates that cannot possibly reach the threshold. It returns `True` for
+a superset of the real matches: name-length compatibility covers the edit
+distance, substring and homoglyph components, and a close Soundex code covers
+the phonetic one.
+
 #### `levenshtein(s1: str, s2: str) -> int`
 
 Returns the minimum number of insertions, deletions, and substitutions needed
@@ -239,18 +254,33 @@ print(engine.normalize_homoglyphs("pаypal"))
 #### `KnownPackagesDB() -> KnownPackagesDB`
 
 Loads the built-in package names into memory. The database is offline and
-cannot be populated through the public API.
+cannot be populated through the public API. The `java` ecosystem is loaded
+from packaged data (`taintrace/data/java_packages.txt`), generated from the
+Maven Central repository index by `scripts/generate_java_packages.py`.
 
 #### `is_known(name: str, ecosystem: str = "rust") -> bool`
 
 Returns whether `name` is present in the selected ecosystem's known-package
-list, case-insensitively. Unknown ecosystems return `False`.
+list, case-insensitively. Unknown ecosystems return `False`. For `java`, a
+bare `artifactId` also resolves against every curated `groupId`.
+
+#### `has_ecosystem_data(ecosystem: str) -> bool`
+
+Returns whether the ecosystem has any known-package data at all. An ecosystem
+registered but empty silently disables similarity matching (#77); this makes
+that condition detectable.
+
+#### `ecosystems() -> list[str]`
+
+Returns the ecosystems that have known-package data, sorted.
 
 #### `get_similar(name: str, threshold: float = 0.8, ecosystem: str = "rust") -> list[tuple[str, float]]`
 
 Returns up to ten known package names whose similarity is at least
-`threshold`, sorted from highest to lowest score. Unknown ecosystems return an
-empty list.
+`threshold`, sorted from highest to lowest score.
+
+Raises `taintrace.UnknownEcosystemError` when `ecosystem` has no data, so a
+coverage gap is never reported as an empty match list.
 
 ```python
 from taintrace import KnownPackagesDB

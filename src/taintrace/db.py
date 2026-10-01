@@ -1,6 +1,52 @@
 """Known packages database — embedded for offline use."""
 
-from typing import List, Tuple, Dict
+from collections.abc import Iterable
+from pathlib import Path
+from typing import Dict, List, Tuple
+
+JAVA_DATA_FILE = Path(__file__).with_name("data") / "java_packages.txt"
+
+
+def _load_java_packages() -> set:
+    """Load `groupId:artifactId` coordinates generated from Maven Central.
+
+    The file is committed to the repository and packaged with the wheel
+    (`taintrace/data/java_packages.txt`). If it is missing the installation is
+    broken, and an empty java set is exactly what caused issue #77 -- so fail
+    loudly instead of silently degrading every Java dependency to "unknown".
+    """
+    if not JAVA_DATA_FILE.is_file():  # pragma: no cover - broken installation
+        raise RuntimeError(
+            f"Java known-package data is missing at {JAVA_DATA_FILE}. "
+            "Reinstall taintrace, or regenerate it with "
+            "`python scripts/generate_java_packages.py`."
+        )
+    coordinates = {
+        line.strip()
+        for line in JAVA_DATA_FILE.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.startswith("#")
+    }
+    if not coordinates:  # pragma: no cover - broken installation
+        raise RuntimeError(f"Java known-package data at {JAVA_DATA_FILE} is empty")
+    return coordinates
+
+
+class UnknownEcosystemError(LookupError):
+    """Raised when an ecosystem has no known-package data at all.
+
+    Issue #77: a Java dependency was scored against an *empty* package set and
+    the result read as "unknown package" rather than "taintrace knows nothing
+    about this ecosystem". Distinguishing the two keeps a coverage gap legible
+    instead of silent.
+    """
+
+    def __init__(self, ecosystem: str, supported: Iterable[str] = ()):
+        self.ecosystem = ecosystem
+        self.supported = sorted(supported)
+        message = f"no known-package data for ecosystem {ecosystem!r}"
+        if self.supported:
+            message += "; available ecosystems: " + ", ".join(self.supported)
+        super().__init__(message)
 
 
 class KnownPackagesDB:
@@ -17,22 +63,54 @@ class KnownPackagesDB:
             "php": self._PHP_PACKAGES,
             "swift": self._SWIFT_PACKAGES,
             "elixir": self._ELIXIR_PACKAGES,
+            "java": self._JAVA_PACKAGES,
         }
+        # An artifactId is unique within a group but not across groups, so a bare
+        # artifactId is resolved against every curated group (#77).
+        self._java_artifact_ids = {
+            coordinate.split(":", 1)[1]: coordinate
+            for coordinate in self._JAVA_PACKAGES
+        }
+
+    def ecosystems(self) -> list[str]:
+        """Ecosystems that have known-package data."""
+        return sorted(self._packages)
+
+    def has_ecosystem_data(self, ecosystem: str) -> bool:
+        """Whether any known-package data exists for `ecosystem`."""
+        return bool(self._packages.get(ecosystem))
 
     def is_known(self, name: str, ecosystem: str = "rust") -> bool:
         """Check if a package name is in the known packages list."""
         packages = self._packages.get(ecosystem, set())
-        return name.lower() in {p.lower() for p in packages}
+        lowered = name.lower()
+        if lowered in {p.lower() for p in packages}:
+            return True
+        # Java coordinates are `groupId:artifactId`; accept a bare artifactId too.
+        if ecosystem == "java" and ":" not in name:
+            return lowered in self._java_artifact_ids
+        return False
 
-    def get_similar(self, name: str, threshold: float = 0.8, 
+    def get_similar(self, name: str, threshold: float = 0.8,
                      ecosystem: str = "rust") -> List[Tuple[str, float]]:
-        """Find known packages similar to the given name."""
+        """Find known packages similar to the given name.
+
+        Raises `UnknownEcosystemError` when `ecosystem` has no data, so a
+        coverage gap is never reported as "no similar packages found" (#77).
+        """
+        if not self.has_ecosystem_data(ecosystem):
+            raise UnknownEcosystemError(ecosystem, self.ecosystems())
         from taintrace.similarity import SimilarityEngine
         engine = SimilarityEngine()
+        query = name.lower()
         results = []
-        packages = self._packages.get(ecosystem, set())
-        for known_name in packages:
-            score = engine.similarity(name.lower(), known_name.lower())
+        for known_name in self._packages[ecosystem]:
+            candidate = known_name.lower()
+            # Skip candidates that cannot reach the threshold, which keeps the
+            # java ecosystem (thousands of coordinates) scannable.
+            if not engine.could_match(query, candidate, threshold):
+                continue
+            score = engine.similarity(query, candidate)
             if score >= threshold:
                 results.append((known_name, score))
         results.sort(key=lambda x: x[1], reverse=True)
@@ -225,3 +303,9 @@ class KnownPackagesDB:
         "phoenix_pubsub", "plug", "plug_cowboy", "postgrex", "req", "swoosh",
         "telemetry", "tesla", "websock", "websock_adapter",
     }
+
+    # Java/Maven coordinates are `groupId:artifactId`, exactly as the Gradle and
+    # Maven parsers emit them. The list is generated from Maven Central by
+    # scripts/generate_java_packages.py and shipped as package data; see
+    # src/taintrace/data/java_packages.txt for provenance.
+    _JAVA_PACKAGES = _load_java_packages()

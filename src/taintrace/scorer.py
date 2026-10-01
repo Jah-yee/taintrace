@@ -40,6 +40,17 @@ class RiskScorer:
 
     def score(self, package_name: str, ecosystem: str = "rust", similarity_threshold: float = 0.7) -> RiskResult:
         """Calculate risk score for a package name."""
+        # An ecosystem with no known-package data can only produce an unknown
+        # verdict. Say so instead of implying the package was checked (#77).
+        if not self.db.has_ecosystem_data(ecosystem):
+            return RiskResult(
+                package_name=package_name,
+                level=RiskLevel.MEDIUM,
+                score=0.3,
+                similar_packages=[],
+                reason=f"No known-package data for ecosystem '{ecosystem}' – typosquatting cannot be assessed"
+            )
+
         # Check if it's a known package
         if self.db.is_known(package_name, ecosystem):
             return RiskResult(

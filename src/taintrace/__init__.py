@@ -2,7 +2,7 @@
 
 from taintrace.lockfile import LockfileParser, Dependency
 from taintrace.similarity import SimilarityEngine
-from taintrace.db import KnownPackagesDB
+from taintrace.db import KnownPackagesDB, UnknownEcosystemError
 from taintrace.scorer import RiskScorer, RiskResult, RiskLevel
 from taintrace.detector import TyposquatDetector, DetectionResult
 
@@ -13,6 +13,7 @@ __all__ = [
     "Dependency",
     "SimilarityEngine",
     "KnownPackagesDB",
+    "UnknownEcosystemError",
     "RiskScorer",
     "RiskResult",
     "RiskLevel",
