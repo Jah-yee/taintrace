@@ -295,19 +295,47 @@ SKIP_DIRS = {".git", "node_modules", "vendor", ".vendor", "dist", "build", ".cac
 
 
 def _find_lockfiles(path: Path) -> list[tuple[Path, str]]:
-    """Recursively find lockfiles in a directory, returning (path, ecosystem) pairs."""
-    lockfiles = []
-    if not path.is_dir():
-        return lockfiles
-    
-    for item in path.iterdir():
-        if item.is_dir():
-            if item.name in SKIP_DIRS:
+    """Recursively find lockfiles in a directory, returning (path, ecosystem) pairs.
+
+    Symlinked directories are not descended into: a link pointing at an ancestor
+    makes the walk revisit the same tree forever (#99/#112). Results are
+    de-duplicated by resolved real path so a lockfile reachable both directly and
+    through a link is reported once.
+    """
+    lockfiles: list[tuple[Path, str]] = []
+    seen: set[Path] = set()
+
+    def walk(directory: Path) -> None:
+        if not directory.is_dir():
+            return
+
+        try:
+            entries = sorted(directory.iterdir())
+        except OSError:  # unreadable directory, e.g. a broken loop of symlinks
+            return
+
+        for item in entries:
+            if item.is_symlink():
+                # A link to a lockfile is still worth reporting; a link to a
+                # directory is not descended into.
+                if item.name in LOCKFILE_NAMES:
+                    resolved = item.resolve()
+                    if resolved not in seen:
+                        seen.add(resolved)
+                        lockfiles.append((item, LOCKFILE_NAMES[item.name]))
                 continue
-            lockfiles.extend(_find_lockfiles(item))
-        elif item.name in LOCKFILE_NAMES:
-            lockfiles.append((item, LOCKFILE_NAMES[item.name]))
-    
+
+            if item.is_dir():
+                if item.name in SKIP_DIRS:
+                    continue
+                walk(item)
+            elif item.name in LOCKFILE_NAMES:
+                resolved = item.resolve()
+                if resolved not in seen:
+                    seen.add(resolved)
+                    lockfiles.append((item, LOCKFILE_NAMES[item.name]))
+
+    walk(path)
     return lockfiles
 
 
