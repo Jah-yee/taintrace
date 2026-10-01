@@ -38,6 +38,7 @@ dev = ["pytest>=7.0", "pytest-cov>=4.0"]
 Homepage = "https://github.com/yunaremaia/taintrace"
 Issues = "https://github.com/yunaremaia/taintrace/issues"
 Funding = "https://github.com/sponsors/yunaremaia"
+Changelog = "https://github.com/yunaremaia/taintrace/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 where = ["src"]

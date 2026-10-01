@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/yunaremaia/taintrace/actions/workflows/ci.yml/badge.svg)](https://github.com/yunaremaia/taintrace/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/yunaremaia/taintrace/blob/main/LICENSE) [![Release](https://img.shields.io/github/v/release/yunaremaia/taintrace)](https://github.com/yunaremaia/taintrace/releases/latest) [![Stars](https://img.shields.io/github/stars/yunaremaia/taintrace)](https://github.com/yunaremaia/taintrace)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/yunaremaia/taintrace/blob/main/LICENSE) [![PyPI](https://img.shields.io/pypi/v/taintrace)](https://pypi.org/project/taintrace/) [![Release](https://img.shields.io/github/v/release/yunaremaia/taintrace)](https://github.com/yunaremaia/taintrace/releases/latest) [![Stars](https://img.shields.io/github/stars/yunaremaia/taintrace)](https://github.com/yunaremaia/taintrace)
 
 **Typosquat detector for AI coding agent dependencies.**
 
