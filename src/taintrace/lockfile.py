@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 import json
 import re
 
@@ -241,39 +241,170 @@ class LockfileParser:
 
         return versions
 
+    # Sections whose keys name crates. Order matters: ``[dependencies]`` outranks
+    # ``[build-dependencies]``, which outranks ``[dev-dependencies]``, so that a
+    # crate declared in several sections keeps its production version (#65/#72).
+    _CARGO_DEP_SECTIONS = {
+        "dependencies": 0,
+        "build-dependencies": 1,
+        "dev-dependencies": 2,
+    }
+
+    @classmethod
+    def _cargo_section_kind(cls, header: str) -> Optional[Tuple[int, Optional[str]]]:
+        """Classify a TOML table header as a Cargo dependency table.
+
+        Returns ``(precedence, crate_name)`` for a dependency table, where
+        ``crate_name`` is the sub-table suffix for ``[dependencies.<name>]``
+        syntax (#143), and ``None`` for the plain ``[dependencies]`` form.
+        Returns ``None`` when the header is not a dependency table at all.
+        """
+        parts = header.split(".")
+        # Drop an optional ``[target.'cfg(unix)'.dependencies...]`` prefix.
+        if parts[0] == "target":
+            parts = parts[2:]
+
+        if not parts:
+            return None
+
+        section = parts[0]
+        if section not in cls._CARGO_DEP_SECTIONS:
+            return None
+
+        precedence = cls._CARGO_DEP_SECTIONS[section]
+        if len(parts) == 1:
+            return precedence, None
+
+        # ``[dependencies.tokio]`` / ``[dev-dependencies."my-crate"]``: the
+        # remaining path segments spell the crate name.
+        crate = ".".join(parts[1:]).strip().strip("\"'")
+        if not crate:
+            return None
+        return precedence, crate
+
+    @staticmethod
+    def _cargo_version_from_spec(spec: str, workspace_versions: dict[str, str], name: str) -> str:
+        """Extract a version from a Cargo dependency spec.
+
+        Handles the bare string form (``serde = "1.0"``), the inline table form
+        (``serde = { version = "1.0" }``) and workspace inheritance.
+        """
+        spec = spec.strip()
+        spec = re.sub(r"#.*$", "", spec).strip()
+
+        if re.search(r"\bworkspace\s*=\s*true\b", spec):
+            return workspace_versions.get(name, "workspace")
+
+        quoted = re.fullmatch(r'"([^"]+)"', spec)
+        if quoted:
+            return quoted.group(1)
+
+        ver_match = re.search(r'version\s*=\s*"([^"]+)"', spec)
+        if ver_match:
+            return ver_match.group(1)
+
+        # A sub-table may inherit via ``version.workspace = true``.
+        return "0.0.0"
+
     def _parse_cargo_toml(self, path: Path) -> List[Dependency]:
         """Parse Cargo.toml dependency sections, including workspace-inherited versions."""
-        deps = []
         content = path.read_text(encoding="utf-8", errors="replace")
 
         workspace_root = self._find_cargo_workspace_root(path)
         workspace_versions = self._parse_cargo_workspace_dependencies(workspace_root)
 
-        sections = re.split(r"^\[(?:dev-|build-)?dependencies\]\s*$", content, flags=re.MULTILINE)
-        for section in sections[1:]:
-            for line in section.strip().splitlines():
-                line = line.strip()
-                if not line or line.startswith("#"):
+        # name -> (precedence, order, version); first declaration wins at equal
+        # precedence so the production entry beats dev/build copies (#65/#72).
+        found: dict[str, Tuple[int, int, str]] = {}
+        order = 0
+
+        section_kind: Optional[Tuple[int, Optional[str]]] = None
+        sub_table: Optional[str] = None
+        pending: Optional[Tuple[str, int]] = None
+        pending_spec: List[str] = []
+
+        def record(name: str, precedence: int, version: str) -> None:
+            nonlocal order
+            existing = found.get(name)
+            if existing is not None and existing[0] <= precedence:
+                return
+            if existing is not None:
+                order -= 1  # re-insert the upgraded entry at this position
+            found[name] = (precedence, order, version)
+            order += 1
+
+        def flush_pending() -> None:
+            """Commit a multi-line inline table, e.g. ``rand = {`` ... ``}``."""
+            nonlocal pending, pending_spec
+            if pending is not None:
+                name, precedence = pending
+                record(name, precedence, self._cargo_version_from_spec(
+                    " ".join(pending_spec), workspace_versions, name))
+            pending, pending_spec = None, []
+
+        for raw_line in content.splitlines():
+            line = raw_line.split("#", 1)[0].strip()
+            if not line:
+                continue
+
+            if line.startswith("["):
+                flush_pending()
+                header = line.strip("[]").strip()
+                section_kind = self._cargo_section_kind(header)
+                sub_table = section_kind[1] if section_kind else None
+                continue
+
+            if section_kind is None:
+                continue
+
+            precedence, header_crate = section_kind
+
+            if sub_table is not None:
+                # Inside ``[dependencies.<name>]`` every key is part of the spec.
+                key, sep, value = line.partition("=")
+                if not sep:
                     continue
-                if line.startswith("["):
-                    break
+                key = key.strip()
+                if key == "version":
+                    record(header_crate, precedence,
+                           self._cargo_version_from_spec(value, workspace_versions, header_crate))
+                elif key == "version.workspace" and value.strip() == "true":
+                    record(header_crate, precedence,
+                           workspace_versions.get(header_crate, "workspace"))
+                continue
 
-                name_match = re.match(r'^([a-zA-Z0-9_-]+)\s*=\s*', line)
-                if not name_match:
-                    continue
+            if pending is not None:
+                pending_spec.append(line)
+                joined = " ".join(pending_spec)
+                if joined.count("{") <= joined.count("}"):
+                    name, precedence = pending
+                    record(name, precedence,
+                           self._cargo_version_from_spec(joined, workspace_versions, name))
+                    pending, pending_spec = None, []
+                continue
 
-                name = name_match.group(1)
-                workspace_inherited = re.search(r'\bworkspace\s*=\s*true\b', line) is not None
+            name_match = re.match(r'^([a-zA-Z0-9_.-]+)\s*=\s*(.*)$', line)
+            if not name_match:
+                continue
 
-                if workspace_inherited:
-                    version = workspace_versions.get(name, "workspace")
-                else:
-                    ver_match = re.search(r'version\s*=\s*"([^"]+)"', line)
-                    version = ver_match.group(1) if ver_match else "0.0.0"
+            name, spec = name_match.group(1), name_match.group(2)
 
-                deps.append(Dependency(name=name, version=version, ecosystem="rust"))
+            # A multi-line inline table: accumulate until braces balance so its
+            # keys are not mistaken for crates (#92).
+            if spec.count("{") > spec.count("}"):
+                pending = (name, precedence)
+                pending_spec = [spec]
+                continue
 
-        return deps
+            record(name, precedence,
+                   self._cargo_version_from_spec(spec, workspace_versions, name))
+
+        flush_pending()
+
+        return [
+            Dependency(name=name, version=entry[2], ecosystem="rust")
+            for name, entry in sorted(found.items(), key=lambda kv: kv[1][1])
+        ]
     def _parse_cargo(self, path: Path) -> List[Dependency]:
         """Parse Cargo.lock TOML format."""
         deps = []
