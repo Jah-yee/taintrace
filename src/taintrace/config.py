@@ -38,7 +38,7 @@ VALID_CONFIG_KEYS = {
 }
 
 VALID_ECOSYSTEMS = {
-    "auto", "rust", "node", "python", "go", "ruby", "php", "swift", "elixir"
+    "auto", "rust", "node", "python", "go", "ruby", "php", "swift", "elixir", "java"
 }
 
 VALID_FORMATS = {"cli", "json", "sarif"}
